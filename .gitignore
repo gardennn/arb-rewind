@@ -3,9 +3,6 @@ out/
 cache/
 broadcast/
 
-# Dependencies (installed via forge install)
-lib/
-
 # Environment
 .env
 .env.local

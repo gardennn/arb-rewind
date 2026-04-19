@@ -54,13 +54,11 @@ contract UniV3Scanner is IScanner {
         for (uint256 i = 0; i < 3; i++) {
             try QUOTER.quoteExactInputSingle(
                 IQuoterV2.QuoteExactInputSingleParams({
-                    tokenIn: tokenIn,
-                    tokenOut: tokenOut,
-                    amountIn: amountIn,
-                    fee: fees[i],
-                    sqrtPriceLimitX96: 0
+                    tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fees[i], sqrtPriceLimitX96: 0
                 })
-            ) returns (uint256 out, uint160, uint32, uint256) {
+            ) returns (
+                uint256 out, uint160, uint32, uint256
+            ) {
                 if (out > bestOut) {
                     bestOut = out;
                     bestFee = fees[i];

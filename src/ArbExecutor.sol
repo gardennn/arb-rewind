@@ -219,10 +219,7 @@ contract ArbExecutor {
                 userData: ""
             }),
             IBalancerVault.FundManagement({
-                sender: address(this),
-                fromInternalBalance: false,
-                recipient: address(this),
-                toInternalBalance: false
+                sender: address(this), fromInternalBalance: false, recipient: address(this), toInternalBalance: false
             }),
             0,
             block.timestamp

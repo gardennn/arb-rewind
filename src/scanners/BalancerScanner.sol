@@ -54,18 +54,11 @@ contract BalancerScanner is IScanner {
 
         IBalancerVault.BatchSwapStep[] memory swaps = new IBalancerVault.BatchSwapStep[](1);
         swaps[0] = IBalancerVault.BatchSwapStep({
-            poolId: target,
-            assetInIndex: 0,
-            assetOutIndex: 1,
-            amount: amountIn,
-            userData: ""
+            poolId: target, assetInIndex: 0, assetOutIndex: 1, amount: amountIn, userData: ""
         });
 
         IBalancerVault.FundManagement memory funds = IBalancerVault.FundManagement({
-            sender: address(this),
-            fromInternalBalance: false,
-            recipient: address(this),
-            toInternalBalance: false
+            sender: address(this), fromInternalBalance: false, recipient: address(this), toInternalBalance: false
         });
 
         try VAULT.queryBatchSwap(IBalancerVault.SwapKind.GIVEN_IN, swaps, assets, funds) returns (

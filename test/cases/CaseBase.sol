@@ -111,17 +111,9 @@ abstract contract CaseBase is Test {
             string memory path = string.concat(
                 _symbol(c.path[0]), "->", _symbol(c.path[1]), "->", _symbol(c.path[2]), "->", _symbol(c.path[0])
             );
-            emit log(
-                string.concat(
-                    "  logProfit (1e18): ",
-                    vm.toString(c.logProfit),
-                    "   (",
-                    path,
-                    ", ",
-                    _fmtPct(c.logProfit),
-                    ")"
-                )
-            );
+            emit log(string.concat(
+                    "  logProfit (1e18): ", vm.toString(c.logProfit), "   (", path, ", ", _fmtPct(c.logProfit), ")"
+                ));
         }
         emit log_named_uint("total candidates", cands.length);
     }

@@ -101,46 +101,89 @@ Each case test prints, in order:
 
 ## Example output
 
-From `test/cases/Case_USDCDepeg_202303.t.sol` at block 16,818,000:
+The repo ships with two contrasting cases that tell the same story from
+opposite sides: what a real arb opportunity looks like, and what an
+already-arbed market looks like.
+
+### Case 1 — opportunity found (USDC depeg, active panic)
+
+From `test/cases/Case_USDCDepeg_202303.t.sol` at block **16,804,000**
+(Mar 11 2023, a few hours after SVB froze Circle's USDC reserve — the
+active dislocation window, *before* MEV searchers had fully compressed
+the cross-DEX stable triangle spread):
 
 ```
-  UniV2 USDC->USDT rate: 0.979744880700000000
-  UniV3 USDC->USDT rate: 0.987451619600000000
-  Curve USDC->USDT rate: 0.987605095700000000
-  Balancer USDC->USDT rate: 0.986846785200000000
-  UniV2 USDC->DAI rate: 0.995769149946949539
-  UniV3 USDC->DAI rate: 0.999085577953564074
-  Curve USDC->DAI rate: 0.999873092417166677
-  Balancer USDC->DAI rate: 0.999928093460413902
+  UniV2 USDC->USDT rate: 0.902158493700000000
+  UniV3 USDC->USDT rate: 0.903699397700000000
+  Curve USDC->USDT rate: 0.905973036800000000
+  Balancer USDC->USDT rate: 0.890668293400000000
+  UniV2 USDC->DAI rate: 0.974088341049807260
+  UniV3 USDC->DAI rate: 0.977605082165469346
+  ...
+  profitable triangles: 4
+  ------- top candidates -------
+    logProfit (1e18):  1556908663373049   (USDC->WETH->DAI->USDC,  0.1556%)
+    logProfit (1e18):  1297802508273535   (USDC->DAI->USDT->USDC,  0.1297%)
+    logProfit (1e18):   888461768292190   (USDC->WETH->USDT->USDC, 0.0888%)
+    logProfit (1e18):   503736545450560   (USDC->USDT->WETH->USDC, 0.0503%)
+    logProfit (1e18):   -44037597245172   (USDC->USDT->DAI->USDC, -0.0044%)
+  total candidates: 6
+```
+
+> **Reading this output:** `profitable triangles: 4` with a top cycle at
+> **+0.1556%** is a **real, MEV-available opportunity** sitting on-chain
+> at that block. The detector says: if you'd sent 10,000 USDC through
+> `USDC → WETH → DAI → USDC`, picking the best-quoted venue per hop,
+> you'd have finished ~+15 USDC up before gas. The next three cycles are
+> also positive. This is what the tool is looking for — and it's exactly
+> the kind of moment that lives *inside* historical state and can no
+> longer be exploited in the present.
+
+### Case 2 — arbed to the floor (yen-carry unwind cascade)
+
+From `test/cases/Case_StableImbalance_202408.t.sol` at block **20,480,000**
+(Aug 5 2024, mid-cascade during the yen-carry unwind):
+
+```
+  UniV2 USDC->USDT rate: 0.957205888800000000
+  UniV3 USDC->USDT rate: 0.999091316980000000
+  Curve USDC->USDT rate: 0.999696128800000000
+  Balancer USDC->USDT rate: 0.273612404730000000
+  UniV2 USDC->DAI rate: 0.879530348657468619
+  UniV3 USDC->DAI rate: 0.999167415154245756
   ...
   profitable triangles: 0
   ------- top candidates -------
-    logProfit (1e18): -259056188314006   (USDC->DAI->USDT->USDC, -0.0259%)
-    logProfit (1e18): -300517991962202   (USDC->USDT->DAI->USDC, -0.0300%)
-    logProfit (1e18): -695980278301171   (USDC->USDT->WETH->USDC, -0.0695%)
-    logProfit (1e18): -909042321636580   (USDC->WETH->DAI->USDC, -0.0909%)
-    logProfit (1e18): -1602745858020427   (USDC->WETH->USDT->USDC, -0.1602%)
+    logProfit (1e18):  -302980763817415   (USDC->DAI->USDT->USDC, -0.0302%)
+    logProfit (1e18):  -302980778450745   (USDC->USDT->DAI->USDC, -0.0302%)
+    logProfit (1e18): -3073904190314660   (USDC->WETH->USDT->USDC, -0.3073%)
+    logProfit (1e18): -7817588414174412   (USDC->USDT->WETH->USDC, -0.7817%)
+    logProfit (1e18): -9779889011595358   (USDC->DAI->WETH->USDC, -0.9779%)
   total candidates: 6
 ```
 
 > **Reading this output:** `profitable triangles: 0` is **the finding, not
 > a failure.** At this block, MEV searchers had already compressed every
-> cross-DEX stable triangle to *just below* swap friction. The -0.0259%
+> cross-DEX stable triangle to *just below* swap friction. The -0.0302%
 > top-candidate logProfit tells you exactly *how* arbed-flat the market
 > was — a cluster around -0.03% is roughly the combined fee stack on the
 > best routes, which means the opportunity was already gone before this
-> block landed. **That is the insight.** A tool that reported
-> "opportunity found" here would be lying; a tool that reports
-> "arbed to the floor, near-miss was −0.0259%" is telling you the truth
-> about how fast MEV moves.
+> block landed. A tool that reported "opportunity found" here would be
+> lying; a tool that reports "arbed to the floor, near-miss was −0.0302%"
+> is telling you the truth about how fast MEV moves.
 
-More technical context: near-miss log-profits cluster at ~−0.03% because
-that's the combined V2/V3/Curve/Balancer swap-fee stack. A positive
-logProfit (say `+1e16` ≈ +1%) would be a real opportunity the MEV bots
-missed — rare on high-liquidity pairs, more common around event-driven
-dislocations (depegs, liquidations, bridge outages). See
-[`docs/HISTORICAL_MOMENTS.md`][hm] for per-case narrative; edit the block
-number in any case file to scan your own moment in history.
+### What the pair of examples shows
+
+Same pipeline, same tokens, two different market regimes. Positive
+logProfits like Case 1's +0.1556% exist during event-driven dislocations
+(depegs, liquidations, bridge outages) before MEV bots arrive. Once they
+arrive, triangles compress to the friction floor and the log-profit
+cluster drops to Case 2's −0.03%. The tool surfaces both honestly — and
+that's the value: you can aim any `vm.createSelectFork` block you want
+and know whether arb was structurally available at that moment.
+
+See [`docs/HISTORICAL_MOMENTS.md`][hm] for per-case narrative; edit the
+block number in any case file to scan your own moment in history.
 
 ## Architecture
 

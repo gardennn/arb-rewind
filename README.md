@@ -40,8 +40,10 @@ that question for a Foundry user in one `forge test`.
 cp .env.example .env
 echo "MAINNET_RPC_URL=https://your-archive-rpc" >> .env
 
-# 2. Install submodules
+# 2. Install submodules (foundry wrapper)
 forge install
+# Fallback if forge install stalls on a submodule SHA or network hiccup:
+#   git submodule update --init --recursive
 
 # 3. Run everything (unit + fork + case tests)
 source .env && forge test
@@ -177,19 +179,23 @@ From `test/cases/Case_StableImbalance_202408.t.sol` at block **20,480,000**
 > block landed. A tool that reported "opportunity found" here would be
 > lying; a tool that reports "arbed to the floor, near-miss was −0.0302%"
 > is telling you the truth about how fast MEV moves.
+>
+> **About the outlier rates (0.273 Balancer, 0.880 UniV2).** The
+> `Balancer USDC->USDT: 0.273` and `UniV2 USDC->DAI: 0.880` lines are
+> *not* the real market — they are thin-liquidity artifacts from a
+> staBAL3 pool and a shallow V2 pair at a 100k-USDC probe size, where
+> the quote collapses into the depth curve. The detector's greedy
+> best-edge selection (`_bestEdge` picks the highest-quoted venue per
+> hop) correctly ignores them and routes each leg through Curve / UniV3,
+> whose rates sit at the expected ~0.999 level. This is worth calling
+> out: the scanner layer deliberately reports noisy pools as-is, and the
+> detector layer is robust to that noise. The tool degrades gracefully
+> when a venue is broken at your chosen probe size; it does not silently
+> corrupt the ranking.
 
-### What the pair of examples shows
-
-Same pipeline, same tokens, two different market regimes. Positive
-logProfits like Case 1's +0.1556% exist during event-driven dislocations
-(depegs, liquidations, bridge outages) before MEV bots arrive. Once they
-arrive, triangles compress to the friction floor and the log-profit
-cluster drops to Case 2's −0.03%. The tool surfaces both honestly — and
-that's the value: you can aim any `vm.createSelectFork` block you want
-and know whether arb was structurally available at that moment.
-
-See [`docs/HISTORICAL_MOMENTS.md`][hm] for per-case narrative; edit the
-block number in any case file to scan your own moment in history.
+Same pipeline, same tokens, two market regimes. Edit the block number in
+any case file and re-run to scan your own moment in history; see
+[`docs/HISTORICAL_MOMENTS.md`][hm] for per-case narrative.
 
 ## Architecture
 
@@ -220,6 +226,36 @@ block number in any case file to scan your own moment in history.
                                       |   multi-DEX)     |
                                       +------------------+
 ```
+
+## End-to-end execution (optional)
+
+Beyond scanning and detection, the repo includes an on-fork execution
+path: [`test/ArbExecutor.t.sol`](test/ArbExecutor.t.sol). The executor
+forks at block 16,810,500 (USDC depeg window), takes a 1,000 USDT
+Balancer V2 flashloan, dispatches a 3-hop triangle
+`USDT → USDC → WETH → USDT` across Curve → UniV3 → UniV3, and repays in
+the same transaction — all inside the forked environment, no keys, no
+network egress.
+
+**What it validates (structural, not profit):**
+- Flashloan + multi-DEX dispatch + repay round-trips without reverting.
+- Profit accounting is internally consistent
+  (`amountEnd - amountStart == profit`).
+- Slippage stays within 1% of the flashloan (else the dispatch is buggy).
+
+It deliberately does **not** assert that an arbitrary path is profitable
+at that block — by 16,810,500 most cross-DEX skew had already been
+compressed (the USDC-depeg *case study* at 16,804,000 is what checks
+whether profitable cycles exist in the first place; this test checks
+whether a cycle the detector hands you can actually settle).
+
+```bash
+source .env && forge test --match-contract ArbExecutorTest -vv
+```
+
+Together the two layers cover the full question: *did an opportunity
+exist at block X* (case studies), and *would it have settled cleanly
+through a flashloan* (this test).
 
 ## Case studies
 
@@ -253,6 +289,14 @@ cases where greedy-per-hop diverges from the joint optimum.
   awareness is out of scope.
 - **No private keys, ever.** Execution is simulated inside the fork via
   Balancer V2 flashloan; nothing leaves the test runner.
+- **Research surface, not a production searcher.** The greedy
+  per-venue quoting described above — one probe size, best-rate-per-hop,
+  no joint optimization — is adequate for *answering* the historical
+  question "did an opportunity exist here?" A live searcher would solve
+  edge selection jointly with trade size (slippage-aware routing),
+  include tick-level UniV3 math, model pool inventory across the
+  mempool, and compete on MEV-bundle ordering. None of that is wired
+  here. This repo surfaces market structure; it does not capture it.
 
 ## Repo layout
 
@@ -272,7 +316,7 @@ src/
     BalancerScanner.sol Vault.queryBatchSwap (staBAL3)
   tokens/Tokens.sol     mainnet token registry + decimals helper
 test/
-  ArbDetector.t.sol     unit tests (no fork)
+  ArbDetector.t.sol     unit tests with mock PriceGraph (no fork)
   ArbExecutor.t.sol     fork: flashloan + triangle end-to-end
   scanners/*.t.sol      fork: per-scanner quote sanity
   cases/*.t.sol         Phase 5 historical case studies

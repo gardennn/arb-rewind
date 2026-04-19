@@ -79,7 +79,7 @@ Every case file has a block number near the top. Edit and re-run:
 
 ```solidity
 // test/cases/Case_USDCDepeg_202303.t.sol
-vm.createSelectFork("mainnet", 16_818_000);   // ← change this
+vm.createSelectFork("mainnet", 16_804_000);   // ← change this
 ```
 
 Then `forge test --match-contract CaseUSDCDepeg202303Test -vv` to see what
@@ -91,13 +91,19 @@ Each case test prints, in order:
 
 1. **Every scanner edge** it found (`UniV2 USDC->USDT rate: 0.9967...`).
    Useful for spotting which DEX was offering the best rate on which leg.
-2. **Count of profitable triangles** (`profitable triangles: 0`).
-   Zero is normal and expected at most blocks — it means MEV already
-   arbed the opportunity.
-3. **Top 5 candidates by log-profit**, including negative ones. This is the
-   real signal: how far below friction the best near-miss was. A cluster
-   near `-3e14` = ~-0.03% = arbed-to-the-floor; a cycle near `+1e16` =
-   ~+1% = you found a real one.
+2. **Count of profitable triangles** (`profitable triangles: N`). Both
+   outcomes are informative:
+   - `profitable triangles: 0` means MEV searchers had already compressed
+     every cycle below the fee floor by the time this block closed —
+     normal at most blocks. The shape of the near-miss distribution is
+     the signal, not a failure.
+   - `profitable triangles: N > 0` means you caught the block mid-
+     dislocation, before searchers closed the window. The repo's
+     `Case_USDCDepeg_202303` test pins a block where `N=4` and locks
+     that in with `assertGt(profitable.length, 0)`.
+3. **Top 5 candidates by log-profit**, including negative ones. A cluster
+   near `-3e14` ≈ −0.03% = arbed-to-the-floor (fee-stack residual); a
+   cycle near `+1e15` ≈ +0.1% = a real, MEV-available arb.
 
 ## Example output
 
